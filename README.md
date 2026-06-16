@@ -1,426 +1,164 @@
-# diff-x - Zero-dependency Text Diffing Library
+# diff-x
 
-**diff-x** is a lightweight, zero-dependency JavaScript library for computing differences between texts using Myers' diff algorithm. It provides line, character, word, and JSON diffing capabilities with features like unified diff output, patch creation/application, and similarity calculations.
+Zero-dependency text and object diff library for Node.js. Myers diff algorithm, LCS, patch generation, object diffing, and Levenshtein distance — all in one tiny package.
 
-## ✨ Features
+## Why?
 
-- 🎯 **Zero Dependencies** - Pure JavaScript, no external packages
-- 🚀 **Myers' Algorithm** - O(ND) time complexity for optimal diff computation
-- 📝 **Multiple Diff Levels** - Line, character, word, and JSON diffing
-- 🎭 **Unified Diff Output** - Standard format compatible with `git apply`/`patch`
-- 🧩 **Patch Creation/Application** - Create and apply diff patches
-- 📊 **Diff Statistics** - Count additions, deletions, and change percentages
-- 🎨 **Colorized Output** - Terminal-friendly colored diffs
-- 📈 **Similarity Scoring** - Calculate similarity ratios between texts
-- 🏗️ **Hunk-based Diffs** - Grouped changes with context
-- 🔄 **LCS Utilities** - Longest Common Subsequence calculations
+Every project needs diffing eventually — comparing config files, generating patches, detecting changes. Existing libraries are often heavy or pull in dozens of dependencies. `diff-x` does it all with zero deps.
 
-## 📦 Installation
+## Install
 
 ```bash
 npm install diff-x
 ```
 
-Or use directly in a browser (ES modules):
+## Features
 
-```html
-<script type="module">
-  import { diffLines, diffChars, diffWords } from 'https://cdn.jsdelivr.net/npm/diff-x@1.0.0/dist/index.js';
-</script>
+- **Myers Diff Algorithm** — optimal line-level diffing in O(ND) time
+- **Word-Level Diff** — tokenize and diff at word granularity
+- **LCS** — longest common subsequence for arrays and strings
+- **Unified Diff** — generate standard unified diff patches
+- **Apply Patch** — reconstruct text from a patch
+- **Object Diff** — deep structural diff of objects/arrays with path notation
+- **Levenshtein Distance** — edit distance and similarity ratio
+- **Zero dependencies** — uses only JavaScript built-ins
+
+## Quick Start
+
+```js
+const { diffStrings, createPatch, applyPatch } = require('diff-x');
+
+// Line-level diff
+const changes = diffStrings(
+  'hello\nworld\nfoo',
+  'hello\nearth\nfoo'
+);
+// → [{ type: 'unchanged', value: 'hello' },
+//    { type: 'removed', value: 'world' },
+//    { type: 'added', value: 'earth' },
+//    { type: 'unchanged', value: 'foo' }]
+
+// Generate unified diff
+const patch = createPatch(
+  'line1\nline2\nline3',
+  'line1\nchanged\nline3',
+  'old.txt',
+  'new.txt'
+);
+// → --- old.txt
+//   +++ new.txt
+//   @@ -1,3 +1,3 @@
+//    line1
+//   -line2
+//   +changed
+//    line3
+
+// Round-trip: apply patch to reconstruct
+const restored = applyPatch('line1\nline2\nline3', patch);
+// → 'line1\nchanged\nline3'
 ```
 
-## 🚀 Usage
+## API
 
-### Line Diffing
+### Line & String Diff
 
-```javascript
-import { diffLines, colorize } from 'diff-x';
-
-const oldText = `function calculate(a, b) {
-  return a + b;
-}`;
-
-const newText = `function calculate(a, b) {
-  return a + b;
-  console.log("Result:", result);
-}`;
-
-const parts = diffLines(oldText, newText);
-console.log(colorize(parts));
-// Output:
-//   function calculate(a, b) {
-// + console.log("Result:", result);
-//     return a + b;
-// }
+```js
+diffLines(oldLines[], newLines[])        // → Change[]
+diffStrings(oldStr, newStr)               // → Change[]
+diffWords(oldStr, newStr)                 // → Change[] (word-level)
 ```
 
-### Character Diffing
-
-```javascript
-import { diffChars, colorize } from 'diff-x';
-
-const oldText = 'hello world';
-const newText = 'hello brave world';
-
-const parts = diffChars(oldText, newText);
-console.log(colorize(parts));
-// Output:
-// hel+brave+lo world
+**Change object:**
+```ts
+{
+  type: 'added' | 'removed' | 'unchanged',
+  value: string,
+  oldLineNumber?: number,
+  newLineNumber?: number
+}
 ```
 
-### Word Diffing
+### LCS (Longest Common Subsequence)
 
-```javascript
-import { diffWords, colorize } from 'diff-x';
-
-const oldText = 'Hello world, how are you?';
-const newText = 'Hello brave world, how are you?';
-
-const parts = diffWords(oldText, newText);
-console.log(colorize(parts));
-// Output:
-// Hello -world,+ brave world, how are you?
+```js
+lcs(array1, array2)                       // → common elements
+lcsLength(array1, array2)                 // → number
+lcsLength(a, b, customEqFn)              // with custom equality
+lcsString(str1, str2)                     // → common substring (char-level)
 ```
 
-### JSON Diffing
+### Patch Generation & Application
 
-```javascript
-import { diffJson } from 'diff-x';
-
-const oldConfig = { 
-  name: 'app', 
-  version: '1.0.0',
-  dependencies: { react: '16.0.0' }
-};
-
-const newConfig = { 
-  name: 'app', 
-  version: '1.1.0',
-  dependencies: { react: '17.0.0' }
-};
-
-const changes = diffJson(oldConfig, newConfig);
-console.log(changes);
-// Output:
-// [
-//   { path: '$.version', type: 'changed', oldVal: '1.0.0', newVal: '1.1.0' },
-//   { path: '$.dependencies.react', type: 'changed', oldVal: '16.0.0', newVal: '17.0.0' }
-// ]
+```js
+createPatch(oldStr, newStr, oldFile?, newFile?, contextLines?)  // → unified diff string
+applyPatch(oldStr, patchString)                                 // → reconstructed string
+structuredPatch(oldStr, newStr, ...)                            // → Patch object
 ```
 
-### Unified Diff Output
+### Object Diff
 
-```javascript
-import { unifiedDiff } from 'diff-x';
-
-const oldText = `line 1
-line 2
-line 3
-line 4`;
-
-const newText = `line 1
-line 2
-new line
-line 3
-line 4`;
-
-const unified = unifiedDiff(oldText, newText);
-console.log(unified);
-// Output:
-// --- Original
-// +++ Modified
-// @@ -1,3 +1,4 @@
-//  line 1
-//  line 2
-// +new line
-//  line 3
-//  line 4
+```js
+objectDiff(oldObj, newObj)                // → { path: { type, oldValue, newValue } }
+formatObjectDiff(diff)                    // → human-readable string
 ```
 
-### Patch Creation and Application
-
-```javascript
-import { createPatch, applyPatch } from 'diff-x';
-
-const oldText = 'Hello world';
-const newText = 'Hello brave world';
-
-const patch = createPatch(oldText, newText);
-console.log(patch);
-
-const restored = applyPatch(oldText, patch);
-console.log(restored); // 'Hello brave world'
-```
-
-### Diff Statistics
-
-```javascript
-import { diffStats, diffLines } from 'diff-x';
-
-const parts = diffLines('a\nb\nc', 'a\nx\nc');
-const stats = diffStats(parts);
-
-console.log(stats);
-// Output:
-// { additions: 1, deletions: 1, unchanged: 2, changePercent: 33 }
-```
-
-### Similarity Scoring
-
-```javascript
-import { similarity } from 'diff-x';
-
-const sim = similarity('hello world', 'hello there');
-console.log(sim); // 0.8 (80% similar)
-
-const percent = Math.round(sim * 100);
-console.log(`${percent}% similar`); // 80% similar
-```
-
-### Hunk-based Diffs
-
-```javascript
-import { diffHunks } from 'diff-x';
-
-const oldText = `line 1
-line 2
-line 3
-line 4
-line 5
-line 6`;
-
-const newText = `line 1
-line 2
-new line 1
-new line 2
-line 5
-line 6`;
-
-const hunks = diffHunks(oldText, newText, 1);
-console.log(hunks);
-// Output:
-// [
-//   {
-//     changes: [ ... ],
-//     oldStart: 2,
-//     newStart: 2,
-//     oldEnd: 4,
-//     newEnd: 4
+**Example:**
+```js
+objectDiff(
+  { user: { name: 'Alice', age: 30 } },
+  { user: { name: 'Bob', age: 30, email: 'bob@test.com' } }
+);
+// → {
+//     'user.name': { type: 'changed', oldValue: 'Alice', newValue: 'Bob' },
+//     'user.email': { type: 'added', oldValue: undefined, newValue: 'bob@test.com' }
 //   }
-// ]
 ```
 
-## 🔧 API Reference
+### Levenshtein & Similarity
 
-### Core Functions
+```js
+levenshtein('kitten', 'sitting')          // → 3
+similarity('hello', 'hallo')              // → 0.8
+```
 
-#### `myersDiff(aLen, bLen, eq)`
-- **Description**: Compute the shortest edit script using Myers' O(ND) algorithm
-- **Parameters**: 
-  - `aLen`: Length of sequence A (original)
-  - `bLen`: Length of sequence B (modified)
-  - `eq`: Equality predicate `(aIndex, bIndex) => boolean`
-- **Returns**: Array of edit operations `{type: 'eq'|'del'|'ins', a: number, b: number}`
+### Summary
 
-#### `diffLines(oldStr, newStr)`
-- **Description**: Compute line-level diff
-- **Parameters**: Two strings to compare
-- **Returns**: Array of diff parts with line numbers
+```js
+const summary = diffSummary(changes);
+// → { additions: 2, removals: 1, unchanged: 5, total: 8, changed: true }
+```
 
-#### `diffChars(oldStr, newStr)`
-- **Description**: Compute character-level diff
-- **Parameters**: Two strings to compare
-- **Returns**: Array of diff parts with character-level granularity
-
-#### `diffWords(oldStr, newStr)`
-- **Description**: Compute word-level diff
-- **Parameters**: Two strings to compare
-- **Returns**: Array of word-level diff parts
-
-#### `diffJson(oldVal, newVal, path?)`
-- **Description**: Compute structured diff between JSON-serializable values
-- **Parameters**: Two values and optional base path
-- **Returns**: Array of changes with paths and values
-
-#### `unifiedDiff(oldStr, newStr, opts?)`
-- **Description**: Generate unified diff output
-- **Parameters**: 
-  - Two strings to compare
-  - `opts`: `{oldHeader?, newHeader?, context?: number}`
-- **Returns**: Unified diff string
-
-#### `createPatch(oldStr, newStr)`
-- **Description**: Create a patch object
-- **Parameters**: Two strings to compare
-- **Returns**: Patch object with hunks
-
-#### `applyPatch(oldStr, patch)`
-- **Description**: Apply a patch to reconstruct the new string
-- **Parameters**: Original text and patch object
-- **Returns**: Patched text
-
-### Utility Functions
-
-#### `diffStats(parts)`
-- **Description**: Compute statistics from diff parts
-- **Parameters**: Array of diff parts
-- **Returns**: Object with `additions`, `deletions`, `unchanged`, `changePercent`
-
-#### `diffHunks(oldStr, newStr, context?)`
-- **Description**: Compute hunks with surrounding context
-- **Parameters**: Two strings and optional context lines
-- **Returns**: Array of hunks with metadata
-
-#### `lcsLength(a, b)`
-- **Description**: Compute length of longest common subsequence
-- **Parameters**: Two sequences (strings or arrays)
-- **Returns**: Number (LCS length)
-
-#### `longestCommonSubsequence(a, b)`
-- **Description**: Compute actual LCS elements
-- **Parameters**: Two sequences (strings or arrays)
-- **Returns**: Array of LCS elements
-
-#### `similarity(a, b)`
-- **Description**: Compute similarity ratio (0..1)
-- **Parameters**: Two strings
-- **Returns**: Number between 0 and 1
-
-#### `colorize(parts, opts?)`
-- **Description**: Colorize diff parts for terminal output
-- **Parameters**: Diff parts and options
-- **Returns**: Colorized string
-
-## 🛠️ CLI Usage
-
-diff-x includes a command-line interface for quick diff operations:
+## CLI
 
 ```bash
-# Compare two files (line diff, colored)
-diff-x file1.txt file2.txt
+# Unified diff between two files
+diff-x old.txt new.txt
 
-# Unified diff output
-diff-x -u file1.txt file2.txt
+# Inline view
+diff-x --inline old.txt new.txt
 
-# Character-level diff
-diff-x --char file1.txt file2.txt
+# Summary
+diff-x --summary old.txt new.txt
 
-# Word-level diff
-diff-x --word file1.txt file2.txt
-
-# JSON output
-diff-x --json file1.txt file2.txt
-
-# Diff statistics only
-diff-x --stat file1.txt file2.txt
+# Levenshtein distance
+diff-x --levenshtein "kitten" "sitting"
 
 # Similarity ratio
-diff-x --sim "hello world" "hello there"
+diff-x --similarity "hello" "hallo"
 
-# Read from stdin
-echo -e "line 1\nline 2" | diff-x - file2.txt
-
-# Help
-diff-x --help
+# Demo
+diff-x --demo
 ```
 
-## 🧪 Examples
+## Use Cases
 
-### Code Diffing
-```javascript
-import { diffLines, colorize } from 'diff-x';
+- **Config drift detection** — compare YAML/JSON configs
+- **Changelog generation** — diff versioned data
+- **Code review tools** — generate diffs programmatically
+- **Data synchronization** — detect what changed between snapshots
+- **Fuzzy matching** — find similar strings with Levenshtein
+- **Audit logs** — track object mutations with path-level detail
 
-const oldCode = `function add(a, b) {
-  return a + b;
-}`;
+## License
 
-const newCode = `function add(a, b) {
-  const result = a + b;
-  return result;
-}`;
-
-const parts = diffLines(oldCode, newCode);
-console.log(colorize(parts));
-```
-
-### Configuration File Diffing
-```javascript
-import { diffJson } from 'diff-x';
-
-const oldConfig = {
-  server: {
-    host: 'localhost',
-    port: 3000
-  },
-  database: {
-    url: 'mongodb://localhost:27017/app'
-  }
-};
-
-const newConfig = {
-  server: {
-    host: '0.0.0.0',
-    port: 3000
-  },
-  database: {
-    url: 'mongodb://localhost:27017/myapp'
-  }
-};
-
-const changes = diffJson(oldConfig, newConfig);
-console.log('Configuration changes:');
-changes.forEach(change => {
-  console.log(`${change.path}: ${change.type}`);
-});
-```
-
-### HTML Diffing
-```javascript
-import { diffChars, colorize } from 'diff-x';
-
-const oldHtml = '<div>Hello <span>World</span></div>';
-const newHtml = '<div>Hello <span>Brave</span> World</div>';
-
-const parts = diffChars(oldHtml, newHtml);
-console.log(colorize(parts));
-```
-
-## 📊 Performance
-
-diff-x is optimized for performance:
-
-- **Time Complexity**: O(ND) using Myers' algorithm
-- **Space Complexity**: O(N) for line diffing, O(1) for character/word diffing
-- **Optimizations**: 
-  - Rolling arrays for LCS calculations
-  - Coalescing consecutive same-type operations
-  - Efficient backtracking in Myers' algorithm
-
-Benchmark results on a MacBook Pro:
-- 10,000 lines: ~5ms
-- 100,000 characters: ~2ms
-- Similarity calculation: O(N) time
-
-## 🤝 Contributing
-
-diff-x is designed to be simple, fast, and dependency-free. When contributing:
-
-1. Add tests for new features
-2. Follow the existing code style
-3. Ensure zero dependencies
-4. Document all new APIs
-5. Consider edge cases in diffs
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🌟 Related Projects
-
-- [humanize-quick](https://github.com/sulthonzh/humanize-quick) - Human-readable formatting
-- [query-string-x](https://github.com/sulthonzh/query-string-x) - URL query string manipulation
-- [validatekit](https://github.com/sulthonzh/validatekit) - Zero-dependency validation
-
----
-
-Built with ❤️ for clean, fast, dependency-free JavaScript utilities.
+MIT

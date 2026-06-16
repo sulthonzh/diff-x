@@ -1,20 +1,16 @@
 {
   "name": "diff-x",
   "version": "1.0.0",
-  "description": "Zero-dependency text and line diffing using Myers' diff algorithm",
-  "type": "module",
-  "main": "src/index.js",
-  "bin": {
-    "diff-x": "src/cli.js"
-  },
+  "description": "Zero-dependency text and object diff library with Myers diff algorithm, LCS, patch generation, and unified diff output",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": { "diff-x": "cli.js" },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "build": "tsc",
+    "test": "node test.js"
   },
-  "keywords": ["diff", "myers", "text-diff", "line-diff", "patch", "unified-diff", "zero-dependency"],
+  "keywords": ["diff", "myers", "lcs", "patch", "unified-diff", "compare", "zero-dependency"],
   "author": "sulthonzh",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/sulthonzh/diff-x"
-  }
+  "repository": { "type": "git", "url": "https://github.com/sulthonzh/diff-x" }
 }
