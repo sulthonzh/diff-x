@@ -1,13 +1,29 @@
 {
   "name": "diff-x",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-dependency text and object diff library with Myers diff algorithm, LCS, patch generation, and unified diff output",
   "main": "index.js",
   "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./cli": {
+      "types": "./cli.d.ts",
+      "default": "./cli.js"
+    }
+  },
   "bin": { "diff-x": "cli.js" },
+  "files": ["index.js", "index.d.ts", "cli.js", "cli.d.ts", "README.md", "LICENSE", "CHANGELOG.md"],
   "scripts": {
     "build": "tsc",
-    "test": "node test.js"
+    "test": "node test.js",
+    "test:core": "node test.js",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "keywords": ["diff", "myers", "lcs", "patch", "unified-diff", "compare", "zero-dependency"],
   "author": "sulthonzh",
