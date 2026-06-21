@@ -14,8 +14,18 @@
       "default": "./cli.js"
     }
   },
-  "bin": { "diff-x": "cli.js" },
-  "files": ["index.js", "index.d.ts", "cli.js", "cli.d.ts", "README.md", "LICENSE", "CHANGELOG.md"],
+  "bin": {
+    "diff-x": "cli.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "cli.js",
+    "cli.d.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "node test.js",
@@ -25,8 +35,26 @@
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["diff", "myers", "lcs", "patch", "unified-diff", "compare", "zero-dependency"],
+  "keywords": [
+    "diff",
+    "myers",
+    "lcs",
+    "patch",
+    "unified-diff",
+    "compare",
+    "zero-dependency"
+  ],
   "author": "sulthonzh",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/sulthonzh/diff-x" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sulthonzh/diff-x"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0"
+  },
+  "homepage": "https://github.com/sulthonzh/diff-x#readme",
+  "bugs": {
+    "url": "https://github.com/sulthonzh/diff-x/issues"
+  }
 }

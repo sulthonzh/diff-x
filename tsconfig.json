@@ -6,7 +6,8 @@
     "outDir": ".",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["index.ts", "cli.ts"],
   "exclude": ["node_modules"]
