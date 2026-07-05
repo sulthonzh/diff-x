@@ -1,630 +1,623 @@
+"use strict";
 /**
- * diff-x: Zero-dependency text and line diffing using Myers' diff algorithm.
+ * diff-x — Zero-dependency text and object diff library
  *
- * @module diff-x
+ * Myers diff algorithm, LCS, object diff, patch generation, unified diff output.
  */
-
-'use strict';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Myers' Diff Algorithm (O(ND))
-// ─────────────────────────────────────────────────────────────────────────────
-
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.diffLines = diffLines;
+exports.diffStrings = diffStrings;
+exports.diffWords = diffWords;
+exports.lcsLength = lcsLength;
+exports.lcs = lcs;
+exports.lcsString = lcsString;
+exports.createPatch = createPatch;
+exports.structuredPatch = structuredPatch;
+exports.applyPatch = applyPatch;
+exports.objectDiff = objectDiff;
+exports.formatObjectDiff = formatObjectDiff;
+exports.levenshtein = levenshtein;
+exports.similarity = similarity;
+exports.diffSummary = diffSummary;
+// ─── Myers Diff (line-level) ────────────────────────────────────────────────
 /**
- * Compute the shortest edit script using a simplified approach.
- * This is a working approximation of Myers' algorithm for most cases.
- *
- * @param {number} aLen — Length of sequence A (original)
- * @param {number} bLen — Length of sequence B (modified)
- * @param {(aIndex: number, bIndex: number) => boolean} eq — Equality predicate
- * @returns {Array<{type: 'eq'|'del'|'ins', a: number, b: number}>} Edit script
+ * Compute the Longest Common Subsequence (LCS) table using Myers' algorithm.
+ * Returns the backtracking trace.
  */
-function myersDiff(aLen, bLen, eq) {
-  if (aLen === 0 && bLen === 0) return [];
-  if (aLen === 0) {
-    const ops = [];
-    for (let b = 0; b < bLen; b++) ops.push({ type: 'ins', a: 0, b });
-    return ops;
-  }
-  if (bLen === 0) {
-    const ops = [];
-    for (let a = 0; a < aLen; a++) ops.push({ type: 'del', a, b: 0 });
-    return ops;
-  }
-
-  // Find the optimal path - simplified approach
-  const path = [];
-  let a = 0, b = 0;
-  
-  while (a < aLen || b < bLen) {
-    if (a < aLen && b < bLen && eq(a, b)) {
-      path.push({ type: 'eq', a, b });
-      a++;
-      b++;
-    } else if (a < aLen && (b >= bLen || (a + 1 <= aLen && eq(a + 1, b)))) {
-      path.push({ type: 'del', a, b });
-      a++;
-    } else {
-      path.push({ type: 'ins', a, b });
-      b++;
+function myersTrace(a, b) {
+    const n = a.length;
+    const m = b.length;
+    const max = n + m;
+    // V array: offset by max to handle negative indices
+    // Trace stores V arrays at each edit distance for backtracking
+    const trace = [];
+    const v = new Array(2 * max + 1).fill(0);
+    const vOffset = max;
+    for (let d = 0; d <= max; d++) {
+        // Store a copy of v at this edit distance
+        trace.push([...v]);
+        for (let k = -d; k <= d; k += 2) {
+            let x;
+            if (k === -d || (k !== d && v[vOffset + k - 1] < v[vOffset + k + 1])) {
+                // Down (insertion)
+                x = v[vOffset + k + 1];
+            }
+            else {
+                // Right (deletion)
+                x = v[vOffset + k - 1] + 1;
+            }
+            let y = x - k;
+            while (x < n && y < m && a[x] === b[y]) {
+                x++;
+                y++;
+            }
+            v[vOffset + k] = x;
+            if (x >= n && y >= m) {
+                return trace;
+            }
+        }
     }
-  }
-  
-  return path;
+    return trace;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Line-level diffing
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Compute a line-level diff between two strings.
- *
- * @param {string} oldStr — Original text
- * @param {string} newStr — Modified text
- * @returns {Array<{type: 'equal'|'removed'|'added', value: string, oldLine?: number, newLine?: number}>} Diff parts
+ * Backtrack through the Myers trace to produce the diff.
  */
-function diffLines(oldStr, newStr) {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  const ops = myersDiff(oldLines.length, newLines.length, (a, b) => oldLines[a] === newLines[b]);
-
-  return ops.map((op) => {
-    if (op.type === 'eq') return { type: 'equal', value: oldLines[op.a], oldLine: op.a + 1, newLine: op.b + 1 };
-    if (op.type === 'del') return { type: 'removed', value: oldLines[op.a], oldLine: op.a + 1 };
-    return { type: 'added', value: newLines[op.b], newLine: op.b + 1 };
-  });
+function backtrack(trace, a, b) {
+    const n = a.length;
+    const m = b.length;
+    const max = n + m;
+    const vOffset = max;
+    const result = [];
+    let x = n;
+    let y = m;
+    for (let d = trace.length - 1; d > 0; d--) {
+        const v = trace[d];
+        const k = x - y;
+        let prevK;
+        if (k === -d || (k !== d && v[vOffset + k - 1] < v[vOffset + k + 1])) {
+            prevK = k + 1;
+        }
+        else {
+            prevK = k - 1;
+        }
+        const prevX = v[vOffset + prevK];
+        const prevY = prevX - prevK;
+        // Equal segments (snake)
+        while (x > prevX && y > prevY) {
+            result.push({ type: 'equal', value: a[x - 1] });
+            x--;
+            y--;
+        }
+        if (d > 0) {
+            if (x === prevX) {
+                // Insertion
+                result.push({ type: 'add', value: b[y - 1] });
+                y--;
+            }
+            else {
+                // Deletion
+                result.push({ type: 'remove', value: a[x - 1] });
+                x--;
+            }
+        }
+    }
+    // Handle remaining equal segment at the start
+    const v0 = trace[0] || [];
+    while (x > 0 && y > 0) {
+        result.push({ type: 'equal', value: a[x - 1] });
+        x--;
+        y--;
+    }
+    result.reverse();
+    return result;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Character-level diffing
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Compute a character-level diff between two strings.
- *
- * @param {string} oldStr — Original text
- * @param {string} newStr — Modified text
- * @returns {Array<{type: 'equal'|'removed'|'added', value: string}>} Diff parts
+ * Diff two arrays of strings (lines) using Myers' algorithm.
  */
-function diffChars(oldStr, newStr) {
-  const oldChars = [...oldStr];
-  const newChars = [...newStr];
-  const ops = myersDiff(oldChars.length, newChars.length, (a, b) => oldChars[a] === newChars[b]);
-
-  // Don't coalesce characters - tests expect individual character diffs
-  const parts = [];
-  for (const op of ops) {
-    parts.push({
-      type: op.type === 'eq' ? 'equal' : op.type === 'del' ? 'removed' : 'added',
-      value: op.type === 'eq' ? oldChars[op.a] : op.type === 'del' ? oldChars[op.a] : newChars[op.b],
-    });
-  }
-  return parts;
+function diffLines(a, b) {
+    if (a.length === 0 && b.length === 0)
+        return [];
+    if (a.length === 0) {
+        return b.map((value, i) => ({ type: 'added', value, newLineNumber: i + 1 }));
+    }
+    if (b.length === 0) {
+        return a.map((value, i) => ({ type: 'removed', value, oldLineNumber: i + 1 }));
+    }
+    const trace = myersTrace(a, b);
+    const raw = backtrack(trace, a, b);
+    // Build changes with line numbers
+    const changes = [];
+    let oldLn = 0;
+    let newLn = 0;
+    for (const item of raw) {
+        switch (item.type) {
+            case 'equal':
+                oldLn++;
+                newLn++;
+                changes.push({ type: 'unchanged', value: item.value, oldLineNumber: oldLn, newLineNumber: newLn });
+                break;
+            case 'add':
+                newLn++;
+                changes.push({ type: 'added', value: item.value, newLineNumber: newLn });
+                break;
+            case 'remove':
+                oldLn++;
+                changes.push({ type: 'removed', value: item.value, oldLineNumber: oldLn });
+                break;
+        }
+    }
+    return changes;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Word-level diffing
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Tokenize a string into words and whitespace tokens.
- *
- * @param {string} str
- * @returns {string[]}
+ * Diff two strings (split by newlines).
  */
-function tokenizeWords(str) {
-  return str.match(/\s+|\S+/g) || [];
+function diffStrings(oldStr, newStr) {
+    const a = oldStr.length === 0 ? [] : oldStr.split('\n');
+    const b = newStr.length === 0 ? [] : newStr.split('\n');
+    return diffLines(a, b);
 }
-
 /**
- * Compute a word-level diff between two strings.
- *
- * @param {string} oldStr — Original text
- * @param {string} newStr — Modified text
- * @returns {Array<{type: 'equal'|'removed'|'added', value: string}>} Diff parts
+ * Diff two arrays of tokens (word-level diff).
  */
 function diffWords(oldStr, newStr) {
-  const oldTokens = tokenizeWords(oldStr);
-  const newTokens = tokenizeWords(newStr);
-  const ops = myersDiff(oldTokens.length, newTokens.length, (a, b) => oldTokens[a] === newTokens[b]);
-
-  // Don't coalesce words - tests expect individual word diffs
-  const parts = [];
-  for (const op of ops) {
-    parts.push({
-      type: op.type === 'eq' ? 'equal' : op.type === 'del' ? 'removed' : 'added',
-      value: op.type === 'eq' ? oldTokens[op.a] : op.type === 'del' ? oldTokens[op.a] : newTokens[op.b],
+    const a = tokenize(oldStr);
+    const b = tokenize(newStr);
+    const raw = backtrack(myersTrace(a, b), a, b);
+    // Coalesce consecutive same-type tokens
+    const changes = [];
+    let oldIdx = 0;
+    let newIdx = 0;
+    for (const item of raw) {
+        switch (item.type) {
+            case 'equal':
+                oldIdx++;
+                newIdx++;
+                changes.push({ type: 'unchanged', value: item.value });
+                break;
+            case 'add':
+                newIdx++;
+                changes.push({ type: 'added', value: item.value });
+                break;
+            case 'remove':
+                oldIdx++;
+                changes.push({ type: 'removed', value: item.value });
+                break;
+        }
+    }
+    return changes;
+}
+/**
+ * Tokenize a string into words and whitespace segments for word-level diff.
+ */
+function tokenize(str) {
+    return str.match(/\S+|\s+/g) || [];
+}
+// ─── LCS (Longest Common Subsequence) ───────────────────────────────────────
+/**
+ * Compute the length of the LCS of two arrays.
+ */
+function lcsLength(a, b, eq = (x, y) => x === y) {
+    const m = a.length;
+    const n = b.length;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (eq(a[i - 1], b[j - 1])) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            }
+            else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+    return dp[m][n];
+}
+/**
+ * Compute the actual LCS of two arrays.
+ */
+function lcs(a, b, eq = (x, y) => x === y) {
+    const m = a.length;
+    const n = b.length;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (eq(a[i - 1], b[j - 1])) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            }
+            else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+    // Backtrack to find the LCS
+    const result = [];
+    let i = m;
+    let j = n;
+    while (i > 0 && j > 0) {
+        if (eq(a[i - 1], b[j - 1])) {
+            result.unshift(a[i - 1]);
+            i--;
+            j--;
+        }
+        else if (dp[i - 1][j] > dp[i][j - 1]) {
+            i--;
+        }
+        else {
+            j--;
+        }
+    }
+    return result;
+}
+/**
+ * Compute LCS of two strings (character-level).
+ */
+function lcsString(a, b) {
+    return lcs(a.split(''), b.split('')).join('');
+}
+// ─── Patch Generation (Unified Diff) ────────────────────────────────────────
+/**
+ * Convert a diff into unified diff format hunks.
+ */
+function createPatch(oldStr, newStr, oldFileName = '', newFileName = '', contextLines = 3) {
+    const a = oldStr.length === 0 ? [] : oldStr.split('\n');
+    const b = newStr.length === 0 ? [] : newStr.split('\n');
+    const changes = diffLines(a, b);
+    // Build hunks
+    const hunks = [];
+    let currentHunk = null;
+    let oldStart = 0;
+    let newStart = 0;
+    let oldCount = 0;
+    let newCount = 0;
+    const flushHunk = () => {
+        if (currentHunk) {
+            currentHunk.oldLines = oldCount;
+            currentHunk.newLines = newCount;
+            hunks.push(currentHunk);
+            currentHunk = null;
+        }
+    };
+    // Find change segments and group into hunks with context
+    const changeIndices = [];
+    changes.forEach((c, i) => {
+        if (c.type !== 'unchanged')
+            changeIndices.push(i);
     });
-  }
-  return parts;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// JSON-level diffing
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Compute a structured diff between two JSON-serializable values.
- *
- * @param {*} oldVal
- * @param {*} newVal
- * @param {string} [path='$'] — Base path (for recursion)
- * @returns {Array<{path: string, type: string, oldVal: *, newVal: *}>} Changes
- */
-function diffJson(oldVal, newVal, path = '$') {
-  const changes = [];
-
-  if (oldVal === newVal) return changes;
-  if (typeof oldVal !== typeof newVal) {
-    changes.push({ path, type: 'type-change', oldVal, newVal });
-    return changes;
-  }
-  if (oldVal === null || newVal === null) {
-    if (oldVal !== newVal) changes.push({ path, type: 'changed', oldVal, newVal });
-    return changes;
-  }
-  if (typeof oldVal !== 'object') {
-    changes.push({ path, type: 'changed', oldVal, newVal });
-    return changes;
-  }
-
-  if (Array.isArray(oldVal) && Array.isArray(newVal)) {
-    const ops = myersDiff(oldVal.length, newVal.length, (a, b) => JSON.stringify(oldVal[a]) === JSON.stringify(newVal[b]));
-    for (const op of ops) {
-      if (op.type === 'eq') continue;
-      if (op.type === 'del') {
-        changes.push({ path: `${path}[${op.a}]`, type: 'removed', oldVal: oldVal[op.a], newVal: undefined });
-      } else {
-        changes.push({ path: `${path}[${op.b}]`, type: 'added', oldVal: undefined, newVal: newVal[op.b] });
-      }
+    if (changeIndices.length === 0) {
+        return '';
     }
-    // Also diff matching elements deeply
-    const ops2 = myersDiff(oldVal.length, newVal.length, (a, b) => JSON.stringify(oldVal[a]) === JSON.stringify(newVal[b]));
-    let oi = 0, ni = 0;
-    for (const op of ops2) {
-      if (op.type === 'eq') {
-        changes.push(...diffJson(oldVal[op.a], newVal[op.b], `${path}[${op.a}]`));
-      }
-    }
-    return changes;
-  }
-
-  if (Array.isArray(oldVal) !== Array.isArray(newVal)) {
-    changes.push({ path, type: 'type-change', oldVal, newVal });
-    return changes;
-  }
-
-  // Both are plain objects
-  const oldKeys = Object.keys(oldVal).sort();
-  const newKeys = Object.keys(newVal).sort();
-  const allKeys = [...new Set([...oldKeys, ...newKeys])].sort();
-
-  for (const key of allKeys) {
-    const inOld = key in oldVal;
-    const inNew = key in newVal;
-    const childPath = `${path}.${key}`;
-    if (inOld && !inNew) {
-      changes.push({ path: childPath, type: 'removed', oldVal: oldVal[key], newVal: undefined });
-    } else if (!inOld && inNew) {
-      changes.push({ path: childPath, type: 'added', oldVal: undefined, newVal: newVal[key] });
-    } else {
-      changes.push(...diffJson(oldVal[key], newVal[key], childPath));
-    }
-  }
-
-  return changes;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Unified diff format (like `diff -u`)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Generate unified diff output (compatible with `git apply` / `patch`).
- *
- * @param {string} oldStr — Original text
- * @param {string} newStr — Modified text
- * @param {{oldHeader?: string, newHeader?: string, context?: number}} [opts]
- * @returns {string} Unified diff text
- */
-function unifiedDiff(oldStr, newStr, opts = {}) {
-  const oldHeader = opts.oldHeader || 'Original';
-  const newHeader = opts.newHeader || 'Modified';
-  const context = opts.context ?? 3;
-
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  const ops = myersDiff(oldLines.length, newLines.length, (a, b) => oldLines[a] === newLines[b]);
-
-  // Group ops into hunks
-  const hunks = [];
-  let currentHunk = null;
-
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i];
-    if (op.type === 'eq') {
-      if (currentHunk && currentHunk.ops.length > 0) {
-        // Add context lines
-        currentHunk.ops.push({ type: 'eq', a: op.a, b: op.b });
-        currentHunk.contextTrail++;
-        // Close hunk if we have enough trailing context
-        if (currentHunk.contextTrail > context * 2) {
-          // Trim trailing context to `context` lines
-          const ops = currentHunk.ops;
-          let trim = currentHunk.contextTrail - context;
-          while (trim-- > 0) ops.pop();
-          hunks.push(currentHunk);
-          currentHunk = null;
+    let i = 0;
+    while (i < changes.length) {
+        const change = changes[i];
+        if (change.type === 'unchanged') {
+            // Check if this is within context range of a change
+            const distToNextChange = changes.slice(i).findIndex(c => c.type !== 'unchanged');
+            const distFromPrevChange = changeIndices.findIndex(ci => ci > i);
+            const prevChangeIdx = changeIndices.filter(ci => ci < i).pop();
+            if (currentHunk && distToNextChange >= 0 && distToNextChange <= contextLines) {
+                // Still within context of next change
+                currentHunk.lines.push(' ' + change.value);
+                oldCount++;
+                newCount++;
+                i++;
+                continue;
+            }
+            if (currentHunk && (!prevChangeIdx || i - prevChangeIdx > contextLines)) {
+                // End of context range
+                if (distToNextChange === -1 || distToNextChange > contextLines) {
+                    flushHunk();
+                }
+            }
+            if (!currentHunk) {
+                // Skip leading context beyond range
+            }
+            i++;
+            continue;
         }
-      }
-    } else {
-      if (!currentHunk) {
-        // Start new hunk with leading context
-        currentHunk = { ops: [], contextTrail: 0 };
-        // Gather leading context
-        for (let j = Math.max(0, i - context); j < i; j++) {
-          if (ops[j].type === 'eq') {
-            currentHunk.ops.push({ type: 'eq', a: ops[j].a, b: ops[j].b });
-          }
+        // Start new hunk if needed
+        if (!currentHunk) {
+            // Include leading context
+            const contextStart = Math.max(0, i - contextLines);
+            let j = contextStart;
+            oldStart = 0;
+            newStart = 0;
+            oldCount = 0;
+            newCount = 0;
+            const leadLines = [];
+            while (j < i) {
+                leadLines.push(' ' + changes[j].value);
+                j++;
+            }
+            // Determine starts from the context
+            const firstChange = changes[i];
+            oldStart = (firstChange.oldLineNumber || 1) - leadLines.length;
+            newStart = (firstChange.newLineNumber || 1) - leadLines.length;
+            if (oldStart < 1)
+                oldStart = 1;
+            if (newStart < 1)
+                newStart = 1;
+            currentHunk = {
+                type: 'equal',
+                lines: leadLines,
+                oldStart,
+                oldLines: 0,
+                newStart,
+                newLines: 0,
+            };
+            // Count context lines
+            for (const _ of leadLines) {
+                oldCount++;
+                newCount++;
+            }
         }
-      }
-      currentHunk.ops.push({ type: op.type, a: op.a, b: op.b });
-      currentHunk.contextTrail = 0;
+        if (change.type === 'added') {
+            currentHunk.lines.push('+' + change.value);
+            newCount++;
+        }
+        else if (change.type === 'removed') {
+            currentHunk.lines.push('-' + change.value);
+            oldCount++;
+        }
+        i++;
     }
-  }
-
-  if (currentHunk && currentHunk.ops.length > 0) {
-    // Trim trailing context
-    const opsList = currentHunk.ops;
-    while (opsList.length > 0 && opsList[opsList.length - 1].type === 'eq') {
-      opsList.pop();
+    flushHunk();
+    // Build unified diff output
+    const lines = [];
+    if (oldFileName || newFileName) {
+        lines.push(`--- ${oldFileName}`);
+        lines.push(`+++ ${newFileName}`);
     }
-    if (opsList.length > 0) hunks.push(currentHunk);
-  }
-
-  if (hunks.length === 0) return '';
-
-  // Build output
-  const lines = [];
-  lines.push(`--- ${oldHeader}`);
-  lines.push(`+++ ${newHeader}`);
-
-  for (const hunk of hunks) {
-    let oldStart = Infinity, newStart = Infinity, oldCount = 0, newCount = 0;
-    const firstOp = hunk.ops[0];
-    if (firstOp.type === 'eq') {
-      oldStart = firstOp.a + 1;
-      newStart = firstOp.b + 1;
-    } else if (firstOp.type === 'del') {
-      oldStart = firstOp.a + 1;
-      newStart = firstOp.type === 'ins' ? firstOp.b : (firstOp.b > 0 ? firstOp.b : 0) + 1;
-    } else {
-      oldStart = firstOp.a > 0 ? firstOp.a : 0;
-      newStart = firstOp.b + 1;
+    for (const hunk of hunks) {
+        lines.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
+        lines.push(...hunk.lines);
     }
-
-    // Recalculate properly
-    const oldA = hunk.ops.map((o) => o.a).filter((a) => a >= 0);
-    const oldB = hunk.ops.map((o) => o.b).filter((b) => b >= 0);
-    oldStart = oldA.length > 0 ? Math.min(...oldA) : 0;
-    newStart = oldB.length > 0 ? Math.min(...oldB) : 0;
-
-    for (const op of hunk.ops) {
-      if (op.type === 'eq' || op.type === 'del') oldCount++;
-      if (op.type === 'eq' || op.type === 'ins') newCount++;
-    }
-
-    lines.push(`@@ -${oldStart + 1},${oldCount} +${newStart + 1},${newCount} @@`);
-
-    for (const op of hunk.ops) {
-      if (op.type === 'eq') lines.push(' ' + oldLines[op.a]);
-      else if (op.type === 'del') lines.push('-' + oldLines[op.a]);
-      else lines.push('+' + newLines[op.b]);
-    }
-  }
-
-  return lines.join('\n') + '\n';
+    return lines.join('\n');
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Patch generation and application
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Create a patch object from a diff.
- *
- * @param {string} oldStr — Original text
- * @param {string} newStr — Modified text
- * @returns {{hunks: Array, oldHeader: string, newHeader: string}} Patch object
- */
-function createPatch(oldStr, newStr) {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  const ops = myersDiff(oldLines.length, newLines.length, (a, b) => oldLines[a] === newLines[b]);
-
-  return {
-    oldHeader: 'Original',
-    newHeader: 'Modified',
-    hunks: ops.map((op) => ({
-      type: op.type,
-      oldLine: op.a,
-      newLine: op.b,
-      content: op.type === 'eq' || op.type === 'del' ? oldLines[op.a] : newLines[op.b],
-    })),
-  };
+// ─── Structured Patch ───────────────────────────────────────────────────────
+function structuredPatch(oldStr, newStr, oldFileName = 'Original', newFileName = 'Modified', contextLines = 3) {
+    const unified = createPatch(oldStr, newStr, oldFileName, newFileName, contextLines);
+    const hunks = [];
+    if (!unified) {
+        return { oldFileName, newFileName, oldHeader: '', newHeader: '', hunks: [] };
+    }
+    // Parse hunks from unified diff
+    const lines = unified.split('\n');
+    let i = 0;
+    // Skip file headers
+    while (i < lines.length && !lines[i].startsWith('@@'))
+        i++;
+    while (i < lines.length) {
+        const match = lines[i].match(/^@@ -(\d+),(\d+) \+(\d+),(\d+) @@$/);
+        if (!match) {
+            i++;
+            continue;
+        }
+        const hunk = {
+            type: 'equal',
+            oldStart: parseInt(match[1]),
+            oldLines: parseInt(match[2]),
+            newStart: parseInt(match[3]),
+            newLines: parseInt(match[4]),
+            lines: [],
+        };
+        i++;
+        while (i < lines.length && !lines[i].startsWith('@@')) {
+            hunk.lines.push(lines[i]);
+            i++;
+        }
+        hunks.push(hunk);
+    }
+    return { oldFileName, newFileName, oldHeader: '', newHeader: '', hunks };
 }
-
+// ─── Apply Patch ────────────────────────────────────────────────────────────
 /**
- * Apply a patch object to reconstruct the new string.
- *
- * @param {string} oldStr — Original text
- * @param {object} patch — Patch from createPatch
- * @returns {string} Patched text
+ * Apply a unified diff patch to a string.
  */
 function applyPatch(oldStr, patch) {
-  // If no hunks, return original text
-  if (!patch.hunks || patch.hunks.length === 0) {
-    return oldStr;
-  }
-
-  const oldLines = oldStr.split('\n');
-  const result = [];
-
-  let oldIdx = 0;
-  for (const hunk of patch.hunks) {
-    // Copy unchanged lines up to this hunk
-    if (hunk.type === 'eq') {
-      result.push(hunk.content);
-      oldIdx = hunk.oldLine + 1;
-    } else if (hunk.type === 'ins') {
-      result.push(hunk.content);
-    } else {
-      // del — skip old line
-      oldIdx = hunk.oldLine + 1;
+    const lines = patch.split('\n');
+    const oldLines = oldStr.split('\n');
+    const result = [];
+    let oldIdx = 0;
+    let i = 0;
+    while (i < lines.length) {
+        const match = lines[i].match(/^@@ -(\d+),?\d* \+(\d+),?\d* @@$/);
+        if (!match) {
+            i++;
+            continue;
+        }
+        const oldStart = parseInt(match[1]) - 1; // Convert to 0-indexed
+        i++;
+        // Copy unchanged lines before this hunk
+        while (oldIdx < oldStart && oldIdx < oldLines.length) {
+            result.push(oldLines[oldIdx]);
+            oldIdx++;
+        }
+        // Apply hunk lines
+        while (i < lines.length && !lines[i].startsWith('@@')) {
+            const line = lines[i];
+            if (line.startsWith('+++') || line.startsWith('---')) {
+                i++;
+                continue;
+            }
+            if (line.startsWith('+')) {
+                result.push(line.slice(1));
+            }
+            else if (line.startsWith('-')) {
+                oldIdx++; // Skip old line
+            }
+            else if (line.startsWith(' ')) {
+                result.push(line.slice(1));
+                oldIdx++;
+            }
+            else if (line === '') {
+                // Empty line in patch = unchanged empty line
+                result.push('');
+                oldIdx++;
+            }
+            i++;
+        }
     }
-  }
-
-  return result.join('\n');
+    // Copy remaining lines
+    while (oldIdx < oldLines.length) {
+        result.push(oldLines[oldIdx]);
+        oldIdx++;
+    }
+    return result.join('\n');
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Diff statistics
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── Object Diff ────────────────────────────────────────────────────────────
 /**
- * Compute statistics from a diff result.
- *
- * @param {Array} parts — Diff parts (from diffLines, diffChars, etc.)
- * @returns {{additions: number, deletions: number, unchanged: number, changePercent: number}}
+ * Deep diff two objects. Returns a map of paths to change descriptions.
+ * Paths use dot notation: "a.b[0].c"
  */
-function diffStats(parts) {
-  let additions = 0, deletions = 0, unchanged = 0;
-  for (const part of parts) {
-    if (part.type === 'added') additions++;
-    else if (part.type === 'removed') deletions++;
-    else unchanged++;
-  }
-  const total = additions + deletions + unchanged;
-  return {
-    additions,
-    deletions,
-    unchanged,
-    changePercent: total === 0 ? 0 : Math.round(((additions + deletions) / total) * 100),
-  };
+function objectDiff(oldObj, newObj, path = '') {
+    const result = {};
+    if (oldObj === newObj)
+        return result;
+    // Handle null/undefined
+    if (oldObj === null || newObj === null || oldObj === undefined || newObj === undefined) {
+        if (oldObj !== newObj) {
+            result[path || '<root>'] = { type: 'changed', oldValue: oldObj, newValue: newObj };
+        }
+        return result;
+    }
+    // Type mismatch
+    const oldType = Object.prototype.toString.call(oldObj);
+    const newType = Object.prototype.toString.call(newObj);
+    if (oldType !== newType) {
+        result[path || '<root>'] = { type: 'changed', oldValue: oldObj, newValue: newObj };
+        return result;
+    }
+    // Arrays
+    if (Array.isArray(oldObj) && Array.isArray(newObj)) {
+        const maxLen = Math.max(oldObj.length, newObj.length);
+        for (let i = 0; i < maxLen; i++) {
+            const childPath = `${path}[${i}]`;
+            if (i >= oldObj.length) {
+                result[childPath] = { type: 'added', oldValue: undefined, newValue: newObj[i] };
+            }
+            else if (i >= newObj.length) {
+                result[childPath] = { type: 'removed', oldValue: oldObj[i], newValue: undefined };
+            }
+            else {
+                Object.assign(result, objectDiff(oldObj[i], newObj[i], childPath));
+            }
+        }
+        return result;
+    }
+    // Plain objects
+    if (oldType === '[object Object]') {
+        const oldRecord = oldObj;
+        const newRecord = newObj;
+        const allKeys = new Set([...Object.keys(oldRecord), ...Object.keys(newRecord)]);
+        for (const key of allKeys) {
+            const childPath = path ? `${path}.${key}` : key;
+            const inOld = Object.prototype.hasOwnProperty.call(oldRecord, key);
+            const inNew = Object.prototype.hasOwnProperty.call(newRecord, key);
+            if (inOld && !inNew) {
+                result[childPath] = { type: 'removed', oldValue: oldRecord[key], newValue: undefined };
+            }
+            else if (!inOld && inNew) {
+                result[childPath] = { type: 'added', oldValue: undefined, newValue: newRecord[key] };
+            }
+            else {
+                Object.assign(result, objectDiff(oldRecord[key], newRecord[key], childPath));
+            }
+        }
+        return result;
+    }
+    // Primitives or other types
+    if (oldObj !== newObj) {
+        result[path || '<root>'] = { type: 'changed', oldValue: oldObj, newValue: newObj };
+    }
+    return result;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LCS (Longest Common Subsequence) utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Compute the length of the longest common subsequence.
- *
- * @param {string|Array} a — First sequence
- * @param {string|Array} b — Second sequence
- * @returns {number} LCS length
+ * Format an object diff for human reading.
  */
-function lcsLength(a, b) {
-  const aArr = typeof a === 'string' ? [...a] : a;
-  const bArr = typeof b === 'string' ? [...b] : b;
-  const m = aArr.length, n = bArr.length;
-  if (m === 0 || n === 0) return 0;
-
-  // Use rolling array for O(min(m,n)) space
-  const prev = new Array(n + 1).fill(0);
-  const curr = new Array(n + 1).fill(0);
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (aArr[i - 1] === bArr[j - 1]) {
-        curr[j] = prev[j - 1] + 1;
-      } else {
-        curr[j] = Math.max(prev[j], curr[j - 1]);
-      }
+function formatObjectDiff(diff) {
+    const lines = [];
+    for (const [path, entry] of Object.entries(diff)) {
+        const oldVal = typeof entry.oldValue === 'object' ? JSON.stringify(entry.oldValue) : String(entry.oldValue);
+        const newVal = typeof entry.newValue === 'object' ? JSON.stringify(entry.newValue) : String(entry.newValue);
+        switch (entry.type) {
+            case 'added':
+                lines.push(`+ ${path}: ${newVal}`);
+                break;
+            case 'removed':
+                lines.push(`- ${path}: ${oldVal}`);
+                break;
+            case 'changed':
+                lines.push(`~ ${path}: ${oldVal} → ${newVal}`);
+                break;
+        }
     }
-    prev = [...curr];
-  }
-
-  return prev[n];
+    return lines.join('\n');
 }
-
+// ─── Levenshtein Distance ───────────────────────────────────────────────────
 /**
- * Compute the actual longest common subsequence.
- *
- * @param {string|Array} a — First sequence
- * @param {string|Array} b — Second sequence
- * @returns {Array} The LCS elements
+ * Compute the Levenshtein edit distance between two strings.
  */
-function longestCommonSubsequence(a, b) {
-  const aArr = typeof a === 'string' ? [...a] : a;
-  const bArr = typeof b === 'string' ? [...b] : b;
-  const m = aArr.length, n = bArr.length;
-  if (m === 0 || n === 0) return [];
-
-  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (aArr[i - 1] === bArr[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
+function levenshtein(a, b) {
+    const m = a.length;
+    const n = b.length;
+    if (m === 0)
+        return n;
+    if (n === 0)
+        return m;
+    // Use two rows for O(min(m,n)) space
+    const prev = new Array(n + 1);
+    const curr = new Array(n + 1);
+    for (let j = 0; j <= n; j++)
+        prev[j] = j;
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            curr[j] = Math.min(curr[j - 1] + 1, // Insertion
+            prev[j] + 1, // Deletion
+            prev[j - 1] + cost // Substitution
+            );
+        }
+        prev.splice(0, n + 1, ...curr);
     }
-  }
-
-  // Backtrack
-  const result = [];
-  let i = m, j = n;
-  while (i > 0 && j > 0) {
-    if (aArr[i - 1] === bArr[j - 1]) {
-      result.unshift(aArr[i - 1]);
-      i--;
-      j--;
-    } else if (dp[i - 1][j] > dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
-  }
-
-  return result;
+    return prev[n];
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Similarity
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Compute similarity ratio between two strings (0..1).
- * Based on LCS length relative to the longer string.
- *
- * @param {string} a
- * @param {string} b
- * @returns {number} Similarity ratio (0 = completely different, 1 = identical)
+ * Compute similarity ratio (0 to 1) between two strings.
  */
 function similarity(a, b) {
-  if (a === b) return 1;
-  if (a.length === 0 && b.length === 0) return 1;
-  const lcs = lcsLength(a, b);
-  return (2 * lcs) / (a.length + b.length);
+    const maxLen = Math.max(a.length, b.length);
+    if (maxLen === 0)
+        return 1;
+    const dist = levenshtein(a, b);
+    return 1 - dist / maxLen;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Hunk-based diff (grouped changes with context)
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── Summary ────────────────────────────────────────────────────────────────
 /**
- * Compute a line diff and group results into hunks with surrounding context.
- *
- * @param {string} oldStr
- * @param {string} newStr
- * @param {number} [context=3] — Context lines around changes
- * @returns {Array<{changes: Array, oldStart: number, newStart: number, oldEnd: number, newEnd: number}>}
+ * Summarize a diff: counts of additions, removals, and unchanged lines.
  */
-function diffHunks(oldStr, newStr, context = 3) {
-  const parts = diffLines(oldStr, newStr);
-  if (parts.length === 0) return [];
-
-  const hunks = [];
-  let currentHunk = null;
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (part.type !== 'equal') {
-      if (!currentHunk) {
-        currentHunk = [];
-        // Gather leading context
-        for (let j = Math.max(0, i - context); j < i; j++) {
-          if (parts[j].type === 'equal') currentHunk.push(parts[j]);
+function diffSummary(changes) {
+    let additions = 0;
+    let removals = 0;
+    let unchanged = 0;
+    for (const c of changes) {
+        switch (c.type) {
+            case 'added':
+                additions++;
+                break;
+            case 'removed':
+                removals++;
+                break;
+            case 'unchanged':
+                unchanged++;
+                break;
         }
-      }
-      currentHunk.push(part);
-    } else if (currentHunk) {
-      currentHunk.push(part);
-      // Count trailing context — if we have enough, close the hunk
-      let trailing = 0;
-      for (let j = currentHunk.length - 1; j >= 0; j--) {
-        if (currentHunk[j].type === 'equal') trailing++;
-        else break;
-      }
-      if (trailing > context) {
-        // Trim excess trailing context
-        while (trailing > context) {
-          currentHunk.pop();
-          trailing--;
-        }
-        hunks.push(currentHunk);
-        currentHunk = null;
-      }
     }
-  }
-
-  if (currentHunk) {
-    // Trim trailing equal parts
-    while (currentHunk.length > 0 && currentHunk[currentHunk.length - 1].type === 'equal') {
-      currentHunk.pop();
-    }
-    if (currentHunk.length > 0) hunks.push(currentHunk);
-  }
-
-  return hunks.map((changes) => {
-    const oldLines = changes.filter((c) => c.oldLine !== undefined);
-    const newLines = changes.filter((c) => c.newLine !== undefined);
     return {
-      changes,
-      oldStart: oldLines.length > 0 ? oldLines[0].oldLine : 0,
-      newStart: newLines.length > 0 ? newLines[0].newLine : 0,
-      oldEnd: oldLines.length > 0 ? oldLines[oldLines.length - 1].oldLine : 0,
-      newEnd: newLines.length > 0 ? newLines[newLines.length - 1].newLine : 0,
+        additions,
+        removals,
+        unchanged,
+        total: changes.length,
+        changed: additions > 0 || removals > 0,
     };
-  });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Color helpers for CLI
-// ─────────────────────────────────────────────────────────────────────────────
-
-const COLORS = {
-  reset: '\x1b[0m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  dim: '\x1b[2m',
-  cyan: '\x1b[36m',
-};
-
-function colorize(parts, { color = true } = {}) {
-  if (!color) {
-    return parts.map((p) => {
-      const prefix = p.type === 'added' ? '+' : p.type === 'removed' ? '-' : ' ';
-      return `${prefix} ${p.value}`;
-    }).join('\n');
-  }
-  return parts.map((p) => {
-    if (p.type === 'added') return `${COLORS.green}+ ${p.value}${COLORS.reset}`;
-    if (p.type === 'removed') return `${COLORS.red}- ${p.value}${COLORS.reset}`;
-    return `${COLORS.dim}  ${p.value}${COLORS.reset}`;
-  }).join('\n');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Exports
-// ─────────────────────────────────────────────────────────────────────────────
-
-export {
-  myersDiff,
-  diffLines,
-  diffChars,
-  diffWords,
-  diffJson,
-  unifiedDiff,
-  createPatch,
-  applyPatch,
-  diffStats,
-  diffHunks,
-  lcsLength,
-  longestCommonSubsequence,
-  similarity,
-  colorize,
-};

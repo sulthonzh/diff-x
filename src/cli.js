@@ -1,141 +1,150 @@
 #!/usr/bin/env node
-
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
 /**
- * diff-x CLI — Command-line text diffing tool
- *
- * Usage:
- *   diff-x <file1> <file2>              Compare two files (line diff, colored)
- *   diff-x -u <file1> <file2>           Unified diff output
- *   diff-x --char <file1> <file2>       Character-level diff
- *   diff-x --word <file1> <file2>       Word-level diff
- *   diff-x --json <file1> <file2>       JSON output
- *   diff-x --stat <file1> <file2>       Diff statistics only
- *   echo -e "a\nb" | diff-x - <file2>   Read from stdin (first arg)
- *   diff-x --sim "string1" "string2"    Similarity ratio
+ * diff-x CLI — Diff text files and print unified diff output
  */
+const index_1 = require("./index");
+const fs = __importStar(require("fs"));
+function main() {
+    const args = process.argv.slice(2);
+    if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+        console.log(`diff-x — Zero-dependency diff tool
 
-import { readFileSync } from 'node:fs';
-import { diffLines, diffChars, diffWords, unifiedDiff, diffStats, similarity, colorize } from './index.js';
-
-function readInput(arg) {
-  if (arg === '-') return readFileSync('/dev/stdin', 'utf-8');
-  return readFileSync(arg, 'utf-8');
-}
-
-function usage() {
-  console.log(`Usage: diff-x [options] <file1> <file2>
+Usage:
+  diff-x <old-file> <new-file>          Unified diff (default)
+  diff-x --inline <old> <new>           Inline (change-by-change) view
+  diff-x --levenshtein <a> <b>          Levenshtein distance
+  diff-x --similarity <a> <b>           Similarity ratio (0–1)
+  diff-x --summary <old> <new>          Diff summary
+  diff-x --demo                          Demo with sample text
 
 Options:
-  -u, --unified           Output unified diff (like diff -u)
-  -c, --char              Character-level diff
-  -w, --word              Word-level diff
-  --no-color              Disable colored output
-  --json                  Output as JSON
-  --stat                  Show diff statistics only
-  --sim                   Show similarity ratio (arguments are strings, not files)
-  -h, --help              Show this help
-
-Examples:
-  diff-x old.txt new.txt
-  diff-x -u old.txt new.txt
-  diff-x --char old.txt new.txt
-  diff-x --json old.txt new.txt
-  diff-x --stat old.txt new.txt
-  diff-x --sim "hello world" "hello there"`);
-}
-
-const args = process.argv.slice(2);
-
-if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
-  usage();
-  process.exit(0);
-}
-
-const opts = {
-  unified: false,
-  char: false,
-  word: false,
-  color: true,
-  json: false,
-  stat: false,
-  sim: false,
-};
-
-const positional = [];
-for (let i = 0; i < args.length; i++) {
-  switch (args[i]) {
-    case '-u':
-    case '--unified': opts.unified = true; break;
-    case '-c':
-    case '--char': opts.char = true; break;
-    case '-w':
-    case '--word': opts.word = true; break;
-    case '--no-color': opts.color = false; break;
-    case '--json': opts.json = true; break;
-    case '--stat': opts.stat = true; break;
-    case '--sim': opts.sim = true; break;
-    default: positional.push(args[i]);
-  }
-}
-
-try {
-  if (opts.sim) {
-    if (positional.length < 2) {
-      console.error('Error: --sim requires two string arguments');
-      process.exit(1);
+  --no-headers     Skip file headers in unified diff
+  --context <n>    Context lines (default: 3)
+  --help, -h       Show this help`);
+        return;
     }
-    const sim = similarity(positional[0], positional[1]);
-    if (opts.json) {
-      console.log(JSON.stringify({ similarity: sim, percent: Math.round(sim * 100) }));
-    } else {
-      console.log(`Similarity: ${(sim * 100).toFixed(1)}%`);
+    const cmd = args[0];
+    if (cmd === '--demo') {
+        return demo();
     }
-    process.exit(0);
-  }
-
-  if (positional.length < 2) {
-    console.error('Error: need two inputs to compare');
-    usage();
-    process.exit(1);
-  }
-
-  const oldStr = readInput(positional[0]);
-  const newStr = readInput(positional[1]);
-
-  if (opts.stat) {
-    const parts = diffLines(oldStr, newStr);
-    const stats = diffStats(parts);
-    if (opts.json) {
-      console.log(JSON.stringify(stats));
-    } else {
-      console.log(`+${stats.additions} -${stats.deletions} (${stats.changePercent}% changed, ${stats.unchanged} unchanged)`);
+    if (cmd === '--levenshtein') {
+        console.log((0, index_1.levenshtein)(args[1] || '', args[2] || ''));
+        return;
     }
-    process.exit(0);
-  }
-
-  if (opts.unified) {
-    const result = unifiedDiff(oldStr, newStr);
-    if (opts.json) {
-      console.log(JSON.stringify({ unified: result }));
-    } else {
-      console.log(result || '(no changes)');
+    if (cmd === '--similarity') {
+        const r = (0, index_1.similarity)(args[1] || '', args[2] || '');
+        console.log(r.toFixed(4));
+        return;
     }
-    process.exit(0);
-  }
-
-  let parts;
-  if (opts.char) parts = diffChars(oldStr, newStr);
-  else if (opts.word) parts = diffWords(oldStr, newStr);
-  else parts = diffLines(oldStr, newStr);
-
-  if (opts.json) {
-    console.log(JSON.stringify(parts, null, 2));
-  } else {
-    const output = colorize(parts, { color: opts.color });
-    if (output.trim()) console.log(output);
-    else console.log('(no changes)');
-  }
-} catch (err) {
-  console.error(`Error: ${err.message}`);
-  process.exit(1);
+    // File diff mode
+    let mode = 'unified';
+    let noHeaders = false;
+    let context = 3;
+    const files = [];
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--inline')
+            mode = 'inline';
+        else if (args[i] === '--summary')
+            mode = 'summary';
+        else if (args[i] === '--no-headers')
+            noHeaders = true;
+        else if (args[i] === '--context')
+            context = parseInt(args[++i]) || 3;
+        else if (!args[i].startsWith('-'))
+            files.push(args[i]);
+    }
+    if (files.length < 2) {
+        console.error('Error: need two inputs');
+        process.exit(1);
+    }
+    const oldStr = files[0] === '-' ? readStdin() : fs.readFileSync(files[0], 'utf-8');
+    const newStr = files[1] === '-' ? readStdin() : fs.readFileSync(files[1], 'utf-8');
+    if (mode === 'inline') {
+        const changes = (0, index_1.diffStrings)(oldStr, newStr);
+        for (const c of changes) {
+            const prefix = c.type === 'added' ? '+' : c.type === 'removed' ? '-' : ' ';
+            const ln = c.oldLineNumber ?? c.newLineNumber ?? '';
+            console.log(`${prefix} ${ln ? String(ln).padStart(4) : '    '} | ${c.value}`);
+        }
+    }
+    if (mode === 'summary') {
+        const changes = (0, index_1.diffStrings)(oldStr, newStr);
+        const s = (0, index_1.diffSummary)(changes);
+        console.log(`+ ${s.additions} additions`);
+        console.log(`- ${s.removals} removals`);
+        console.log(`  ${s.unchanged} unchanged`);
+        console.log(`  ${s.changed ? 'CHANGED' : 'IDENTICAL'}`);
+    }
+    else {
+        const oldName = noHeaders ? '' : (files[0] === '-' ? 'stdin' : `a/${files[0]}`);
+        const newName = noHeaders ? '' : (files[1] === '-' ? 'stdin' : `b/${files[1]}`);
+        const patch = (0, index_1.createPatch)(oldStr, newStr, oldName, newName, context);
+        if (patch)
+            console.log(patch);
+        else
+            console.log('Files are identical');
+    }
 }
+function readStdin() {
+    return fs.readFileSync(0, 'utf-8');
+}
+function demo() {
+    const oldText = `The quick brown fox
+jumps over the lazy dog.
+It was the best of times.
+It was the worst of times.`;
+    const newText = `The quick brown fox
+leaps over the lazy dog.
+It was the best of times.
+It was the age of wisdom.`;
+    console.log('=== UNIFIED DIFF ===\n');
+    console.log((0, index_1.createPatch)(oldText, newText, 'old.txt', 'new.txt'));
+    console.log('\n=== INLINE ===\n');
+    const changes = (0, index_1.diffStrings)(oldText, newText);
+    for (const c of changes) {
+        const sym = c.type === 'added' ? '+' : c.type === 'removed' ? '-' : ' ';
+        console.log(`${sym} ${c.value}`);
+    }
+    console.log('\n=== SUMMARY ===\n');
+    const s = (0, index_1.diffSummary)(changes);
+    console.log(`+${s.additions} -${s.removals} (${s.unchanged} unchanged)`);
+    console.log('\n=== LEVENSHTEIN ===\n');
+    console.log(`jumps→leaps: distance=${(0, index_1.levenshtein)('jumps', 'leaps')}, similarity=${(0, index_1.similarity)('jumps', 'leaps').toFixed(3)}`);
+    console.log(`worst→wisdom: distance=${(0, index_1.levenshtein)('worst', 'wisdom')}, similarity=${(0, index_1.similarity)('worst', 'wisdom').toFixed(3)}`);
+}
+main();
