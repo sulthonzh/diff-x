@@ -29,7 +29,9 @@
   "scripts": {
     "build": "tsc",
     "test": "node test.js",
+    "test:coverage": "c8 node test.js",
     "test:core": "node test.js",
+    "pretest": "npm run build",
     "prepublishOnly": "npm test && npm run build"
   },
   "engines": {
@@ -51,7 +53,8 @@
     "url": "https://github.com/sulthonzh/diff-x"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.0.0",
+    "c8": "^11.0.0"
   },
   "homepage": "https://github.com/sulthonzh/diff-x#readme",
   "bugs": {

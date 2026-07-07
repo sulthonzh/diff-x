@@ -1,6 +1,6 @@
 # diff-x
 
-Zero-dependency text and object diff library for Node.js. 45 tests, 100% pass rate, Myers diff algorithm, LCS, patch generation, and Levenshtein distance — all in <10KB with zero dependencies.
+Zero-dependency text and object diff library for Node.js. Myers diff algorithm, LCS, patch generation, and Levenshtein distance — all in <10KB with zero dependencies.
 
 ## Why?
 

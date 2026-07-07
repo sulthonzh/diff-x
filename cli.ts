@@ -72,7 +72,7 @@ Options:
       const ln = c.oldLineNumber ?? c.newLineNumber ?? '';
       console.log(`${prefix} ${ln ? String(ln).padStart(4) : '    '} | ${c.value}`);
     }
-  } if (mode === 'summary') {
+  } else if (mode === 'summary') {
     const changes = diffStrings(oldStr, newStr);
     const s = diffSummary(changes);
     console.log(`+ ${s.additions} additions`);

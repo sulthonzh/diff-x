@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-07-07
+
+### Fixed
+- CLI inline mode bug: missing `else` caused unified diff output to also print when using `--inline` mode
+
+### Removed
+- Dead code: `src/myers-fix.js` (unused alternative Myers implementation, never imported)
+
+### Added
+- `pretest` hook to auto-build before tests (prevents stale dist issues)
+- `test:coverage` script using c8
+- 46 new edge-case tests (45 → 91): empty inputs, boundary conditions, objectDiff edge cases, multi-hunk patch round-trip, array add/remove
+
+### Verified
+- Tests: 91/91 GREEN (100% pass rate)
+- Coverage: 97.75% statements, 95.93% branches, 100% functions
+- Zero TODO/FIXME
+- TypeScript strict mode clean
+
 ## [1.1.0] - 2026-06-20
 
 ### Added
