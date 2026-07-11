@@ -53,6 +53,7 @@
     "url": "https://github.com/sulthonzh/diff-x"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^26.0.0",
     "c8": "^11.0.0"
   },
