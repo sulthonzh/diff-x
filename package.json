@@ -60,5 +60,8 @@
   "homepage": "https://github.com/sulthonzh/diff-x#readme",
   "bugs": {
     "url": "https://github.com/sulthonzh/diff-x/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -18,3 +18,4 @@ __pycache__/
 /index.d.ts
 /cli.js
 /cli.d.ts
+*.tgz
