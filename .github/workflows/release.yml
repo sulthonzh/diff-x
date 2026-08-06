@@ -28,6 +28,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - run: npm install --no-fund --no-audit
+      - run: npm run build
 
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1

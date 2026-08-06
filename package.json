@@ -32,7 +32,8 @@
     "test:coverage": "c8 node test.js",
     "test:core": "node test.js",
     "pretest": "npm run build",
-    "prepublishOnly": "npm test && npm run build"
+    "prepublishOnly": "npm test && npm run build",
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=18"
